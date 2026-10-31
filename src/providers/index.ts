@@ -1,7 +1,9 @@
 import { ProviderError, type LLMProvider } from "@contracts";
 import { createMockProvider, mockAction, type MockScript } from "./mock";
+import { createOllamaProvider } from "./ollama";
 
 export { createMockProvider, mockAction, mockScripts, type MockScript } from "./mock";
+export { createOllamaProvider } from "./ollama";
 
 /**
  * The provider-relevant subset of agent config. Defined here so providers do not import
@@ -16,10 +18,6 @@ export type ProviderConfig =
 /**
  * Select a provider from validated config. Every provider implements the same LLMProvider
  * contract, so the agent cannot tell them apart.
- *
- * Ollama, Gemini and OpenAI adapters are the next milestone (agent-core tasks 9–11): their
- * request/response fields must be confirmed against the official docs linked in
- * .kiro/specs/agent-core/design.md before they are written. Until then they fail closed.
  */
 export function createProvider(config: ProviderConfig, mockScript?: MockScript): LLMProvider {
   switch (config.LLM_PROVIDER) {
@@ -28,18 +26,20 @@ export function createProvider(config: ProviderConfig, mockScript?: MockScript):
         mockScript ?? (() => mockAction.final("Mock provider: no script configured.")),
       );
     case "ollama":
+      return createOllamaProvider(config.OLLAMA_BASE_URL, config.OLLAMA_MODEL);
     case "gemini":
     case "openai":
       return notYetImplemented(config.LLM_PROVIDER);
   }
 }
 
-function notYetImplemented(id: "ollama" | "gemini" | "openai"): LLMProvider {
+function notYetImplemented(id: "gemini" | "openai"): LLMProvider {
   return {
     id,
     model: "unavailable",
     async generate() {
-      throw new ProviderError("CONFIG", id, "Provider adapter is not implemented yet.");
+      throw new ProviderError("CONFIG", id, `${id} adapter is not yet implemented. Use LLM_PROVIDER=ollama.`);
     },
   };
 }
+
