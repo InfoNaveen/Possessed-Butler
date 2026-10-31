@@ -295,10 +295,30 @@ export type ModelAction = z.infer<typeof ModelActionSchema>;
 // 7. Agent sessions and HTTP API
 export type SessionStatus = "idle" | "running" | "awaiting_approval" | "completed" | "error";
 
+export type BackendExecutionStatus =
+  | "APPROVAL_PENDING"
+  | "APPROVAL_REJECTED"
+  | "EMAIL_SENT"
+  | "EMAIL_FAILED"
+  | "IDLE"
+  | "RUNNING"
+  | "COMPLETED"
+  | "ERROR";
+
 export interface AgentTurnResult {
   sessionId: string;
   status: SessionStatus;
   assistantText: string | null;
   pendingApproval: ApprovalRequest | null;
   error: { code: string; message: string } | null;
+  executionStatus?: BackendExecutionStatus;
+  executionDetails?: {
+    tool?: string;
+    messageId?: string;
+    accepted?: string[];
+    rejected?: string[];
+    summary?: string;
+    reasons?: string[];
+    [key: string]: unknown;
+  };
 }

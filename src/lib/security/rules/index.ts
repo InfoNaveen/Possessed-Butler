@@ -1,4 +1,4 @@
-﻿/**
+/**
  * src/lib/security/rules/index.ts
  *
  * Deterministic policy rules. Each rule is a pure function that receives a
@@ -28,7 +28,7 @@ import { TOOL_NAMES } from "@contracts";
 import { containsEmbeddedToolCall } from "../detectors/index";
 
 // ---------------------------------------------------------------------------
-// Sensitive tools â€” always require explicit approval
+// Sensitive tools — always require explicit approval
 // ---------------------------------------------------------------------------
 
 const ALWAYS_APPROVE: ReadonlySet<ToolName> = new Set<ToolName>(["email.send", "file.write"]);
@@ -268,6 +268,22 @@ const R_BUDGET: Rule = {
   },
 };
 
+const R_BUDGET_PER_STEP: Rule = {
+  id: "R-BUDGET-PER-STEP",
+  enabled: true,
+  evaluate(proposal, _meta, state): RuleResult {
+    const limit = state.policy.limits?.maxProposalsPerStep ?? 5;
+    if (typeof proposal.indexInStep === "number" && proposal.indexInStep >= limit) {
+      return {
+        ruleId: "R-BUDGET-PER-STEP",
+        outcome: "deny",
+        reason: `Exceeded maximum proposals per step (${limit}).`,
+      };
+    }
+    return { ruleId: "R-BUDGET-PER-STEP", outcome: "abstain", reason: "Within step proposal budget." };
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Ordered rule list
 // ---------------------------------------------------------------------------
@@ -278,11 +294,12 @@ export const RULES: ReadonlyArray<Rule> = [
   R_TOOL_DISABLED,      // 2. policy.tools[name].enabled
   R_ARGS_SCHEMA,        // 3. zod validation
   R_BUDGET,             // 4. session budget
-  R_PATH_SANDBOX,       // 5. sandbox enforcement
-  R_SECRET_FILE,        // 6. credential file protection
-  R_SENSITIVE_ACTION,   // 7. approval gate
-  R_EMAIL_SEND_TAINTED, // 8. tainted session + email recipient
-  R_WEB_DOMAIN,         // 9. domain allowlist + HTTPS
+  R_BUDGET_PER_STEP,    // 5. per-step proposal limit
+  R_PATH_SANDBOX,       // 6. sandbox enforcement
+  R_SECRET_FILE,        // 7. credential file protection
+  R_SENSITIVE_ACTION,   // 8. approval gate
+  R_EMAIL_SEND_TAINTED, // 9. tainted session + email recipient
+  R_WEB_DOMAIN,         // 10. domain allowlist + HTTPS
 ];
 
 /** All rule IDs, for test coverage assertions. */

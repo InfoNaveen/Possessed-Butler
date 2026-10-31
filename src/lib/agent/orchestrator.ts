@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   ProviderError,
+  TOOL_NAMES,
   type AgentTurnResult,
   type ApprovalRequest,
   type ApprovalStore,
@@ -15,6 +16,7 @@ import {
   type SessionStatus,
   type ToolCallProposal,
   type ToolExecutor,
+  type ToolName,
   type ToolRegistry,
 } from "@contracts";
 import { notices } from "./notices";
@@ -64,6 +66,10 @@ interface AgentSession {
   locked: boolean;
   /** Set when the audit log failed. The session refuses all further work. */
   fatal: boolean;
+  lastExecution?: {
+    status: AgentTurnResult["executionStatus"];
+    details?: AgentTurnResult["executionDetails"];
+  };
 }
 
 export interface SessionView {
@@ -104,14 +110,38 @@ export function createAgent(deps: AgentDeps): Agent {
 
   function result(
     session: AgentSession,
-    extra: { assistantText?: string | null; pendingApproval?: ApprovalRequest | null; error?: AgentTurnResult["error"] } = {},
+    extra: {
+      assistantText?: string | null;
+      pendingApproval?: ApprovalRequest | null;
+      error?: AgentTurnResult["error"];
+      executionStatus?: AgentTurnResult["executionStatus"];
+      executionDetails?: AgentTurnResult["executionDetails"];
+    } = {},
   ): AgentTurnResult {
+    let executionStatus = extra.executionStatus ?? session.lastExecution?.status;
+    if (!executionStatus) {
+      if (extra.pendingApproval || session.status === "awaiting_approval") {
+        executionStatus = "APPROVAL_PENDING";
+      } else if (session.status === "error" || extra.error) {
+        executionStatus = "ERROR";
+      } else if (session.status === "completed") {
+        executionStatus = "COMPLETED";
+      } else if (session.status === "running") {
+        executionStatus = "RUNNING";
+      } else {
+        executionStatus = "IDLE";
+      }
+    }
+    const executionDetails = extra.executionDetails ?? session.lastExecution?.details;
+
     return {
       sessionId: session.id,
       status: session.status,
       assistantText: extra.assistantText ?? null,
       pendingApproval: extra.pendingApproval ?? null,
       error: extra.error ?? null,
+      executionStatus,
+      executionDetails,
     };
   }
 
@@ -200,7 +230,20 @@ export function createAgent(deps: AgentDeps): Agent {
 
     if (!toolResult.ok) {
       session.transcript.push({ kind: "notice", text: notices.toolFailed(tool, toolResult.error.code) });
+      if (tool === "email.send") {
+        session.lastExecution = {
+          status: "EMAIL_FAILED",
+          details: { tool, summary: toolResult.error.message },
+        };
+      }
       return;
+    }
+
+    if (tool === "email.send") {
+      session.lastExecution = {
+        status: "EMAIL_SENT",
+        details: { tool, summary: toolResult.summary },
+      };
     }
 
     for (const segment of toolResult.segments) {
@@ -275,8 +318,27 @@ export function createAgent(deps: AgentDeps): Agent {
         return result(session, { assistantText: action.text });
       }
 
+      const maxProposals = session.security.policy.limits?.maxProposalsPerStep ?? 5;
       for (let i = 0; i < action.calls.length; i++) {
         const call = action.calls[i];
+        if (i >= maxProposals) {
+          log(session, "budget_exceeded", {
+            limit: "maxProposalsPerStep",
+            value: maxProposals,
+            tool: call.tool,
+            step,
+            indexInStep: i,
+          });
+          const toolName: ToolName | null = (TOOL_NAMES as readonly string[]).includes(call.tool)
+            ? (call.tool as ToolName)
+            : null;
+          session.transcript.push({
+            kind: "notice",
+            text: notices.denied(toolName, ["LIMIT-MAX-PROPOSALS-PER-STEP"]),
+          });
+          continue;
+        }
+
         const proposal: ToolCallProposal = {
           id: randomUUID(),
           sessionId: session.id,
@@ -404,6 +466,9 @@ export function createAgent(deps: AgentDeps): Agent {
       const approval = deps.approvals.get(approvalId);
       const session = approval ? sessions.get(approval.sessionId) : undefined;
       if (!approval || !session) return errorResult("", "APPROVAL_NOT_FOUND", "Unknown approval.");
+      if (approval.sessionId !== session.id) {
+        return errorResult(session.id, "CROSS_SESSION_APPROVAL", "Approval does not belong to active session.");
+      }
       if (session.fatal) return result(session, { error: { code: "SESSION_FAILED", message: "This session is stopped." } });
       if (session.locked) return result(session, { error: { code: "SESSION_BUSY", message: "A turn is already running." } });
       if (session.status !== "awaiting_approval" || session.pendingApprovalId !== approvalId) {
@@ -425,10 +490,14 @@ export function createAgent(deps: AgentDeps): Agent {
         if (!resolved || resolved.status !== (verdict === "approve" ? "approved" : "rejected")) {
           session.transcript.push({ kind: "notice", text: notices.approvalUnavailable(approval.tool) });
         } else if (verdict === "reject") {
+          session.lastExecution = {
+            status: "APPROVAL_REJECTED",
+            details: { tool: approval.tool, summary: "User rejected execution." },
+          };
           session.transcript.push({ kind: "notice", text: notices.rejected(approval.tool) });
         } else {
           const decision = deps.approvals.decisionFor(approvalId);
-          if (!decision) {
+          if (!decision || decision.sessionId !== session.id) {
             session.transcript.push({ kind: "notice", text: notices.approvalUnavailable(approval.tool) });
           } else {
             await executeAndIngest(session, decision, resolved);

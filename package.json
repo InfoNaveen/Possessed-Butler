@@ -12,7 +12,9 @@
     "eval": "vitest --run src/eval"
   },
   "dependencies": {
+    "@types/nodemailer": "^8.0.2",
     "next": "16.4.3",
+    "nodemailer": "^10.3.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "4.6.7"

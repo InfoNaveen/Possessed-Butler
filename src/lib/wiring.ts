@@ -108,7 +108,7 @@ function buildEmailSendTool() {
               source: "tool" as const,
               origin: null,
               text: [
-                `Email delivered successfully.`,
+                `Email accepted by SMTP server for delivery.`,
                 `Message-ID: ${result.messageId}`,
                 `Accepted: ${result.accepted.join(", ")}`,
               ].join("\n"),
@@ -234,6 +234,24 @@ export function configError(): string | null {
     return r.ok ? null : r.issues.join("; ");
   } catch {
     return "Configuration check failed";
+  }
+}
+
+/**
+ * Verify SMTP connection safely without exposing credentials.
+ * Returns { configured, ok, error }.
+ */
+export async function verifySmtpConnection(): Promise<{ configured: boolean; ok: boolean; error?: string }> {
+  const smtpCfg = smtpConfigFromEnv(process.env as Record<string, string | undefined>);
+  if (!smtpCfg) {
+    return { configured: false, ok: false, error: "SMTP not configured in environment" };
+  }
+  try {
+    const mailer = await createSmtpMailer(smtpCfg);
+    const res = await mailer.verifyConnection();
+    return { configured: true, ...res };
+  } catch (err) {
+    return { configured: true, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
