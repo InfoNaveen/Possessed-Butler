@@ -1,4 +1,4 @@
-﻿/**
+/**
  * src/lib/wiring.ts
  *
  * Server-only singleton that assembles the full agent stack from validated config.
@@ -32,6 +32,7 @@ import {
 import { createToolbox } from "@/tools";
 import { createEmailReadTools, parseMailbox } from "@/tools";
 import { defineTool, ToolFailure } from "@/tools";
+import { smtpConfigFromEnv, createSmtpMailer } from "@/tools/email/smtp-mailer";
 import { z } from "zod";
 
 export { createSessionSecurityState } from "@/lib/security";
@@ -48,48 +49,108 @@ export interface WiredStack {
 }
 
 // ---------------------------------------------------------------------------
-// email.send tool definition (Dev 1 deferred this; now wired with the real engine)
+// email.send tool definition — real SMTP when configured, sandbox outbox fallback
 // ---------------------------------------------------------------------------
 const outboxDir = resolve(process.env["SANDBOX_OUTBOX"] ?? "./sandbox/outbox");
 
-const emailSendTool = defineTool({
-  name: "email.send",
-  description:
-    "Send an email to one or more recipients. Requires explicit operator approval before sending. " +
-    "Never sends without approval.",
-  sensitivity: "external_send",
-  producesUntrustedContent: false,
-  inputSchema: z.strictObject({
-    to: z.array(z.email().max(320)).min(1).max(5),
-    subject: z.string().max(200),
-    body: z.string().max(5000),
-  }),
-  timeoutMs: 10_000,
-  async run(args, ctx) {
-    // Write to outbox (simulated send â€” no real SMTP)
-    const { writeFileSync, mkdirSync } = await import("node:fs");
-    const { randomUUID } = await import("node:crypto");
-    mkdirSync(outboxDir, { recursive: true });
-    const filename = `${Date.now()}-${randomUUID()}.json`;
-    const outboxPath = join(outboxDir, filename);
-    const entry = {
-      to: args.to,
-      subject: args.subject,
-      body: args.body,
-      sessionId: ctx.sessionId,
-      sentAt: new Date().toISOString(),
-    };
-    try {
-      writeFileSync(outboxPath, JSON.stringify(entry, null, 2), "utf8");
-    } catch {
-      throw new ToolFailure("INTERNAL", "Failed to write to outbox.");
-    }
-    return {
-      segments: [{ source: "tool" as const, origin: null, text: `Email queued to ${args.to.length} recipient(s).` }],
-      summary: `Queued to: ${args.to.join(", ")}`,
-    };
-  },
-});
+/**
+ * Build the email.send tool. Uses real SMTP (nodemailer) when SMTP_HOST, SMTP_USER,
+ * SMTP_PASS and EMAIL_FROM are all set; falls back to sandbox outbox otherwise.
+ * Credentials are read from process.env on the server — never from args, never sent to client.
+ */
+function buildEmailSendTool() {
+  const smtpCfg = smtpConfigFromEnv(process.env as Record<string, string | undefined>);
+
+  return defineTool({
+    name: "email.send",
+    description:
+      "Send an email to one or more recipients. Requires explicit operator approval before sending. " +
+      "Never sends without approval.",
+    sensitivity: "external_send",
+    producesUntrustedContent: false,
+    inputSchema: z.strictObject({
+      to: z.array(z.email().max(320)).min(1).max(5),
+      subject: z.string().min(1).max(200),
+      body: z.string().min(1).max(5000),
+    }),
+    timeoutMs: 30_000,
+    async run(args, ctx) {
+      if (smtpCfg) {
+        // ── Real SMTP delivery ─────────────────────────────────────────────
+        let mailer;
+        try {
+          mailer = await createSmtpMailer(smtpCfg);
+        } catch (err) {
+          throw new ToolFailure(
+            "INTERNAL",
+            `SMTP transport setup failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        let result;
+        try {
+          result = await mailer.send({ to: args.to, subject: args.subject, body: args.body });
+        } catch (err) {
+          // Never report success if SMTP rejected the message
+          throw new ToolFailure(
+            "INTERNAL",
+            `SMTP delivery failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        if (result.rejected.length > 0) {
+          throw new ToolFailure(
+            "INTERNAL",
+            `SMTP rejected ${result.rejected.length} recipient(s): ${result.rejected.join(", ")}`,
+          );
+        }
+        return {
+          segments: [
+            {
+              source: "tool" as const,
+              origin: null,
+              text: [
+                `Email delivered successfully.`,
+                `Message-ID: ${result.messageId}`,
+                `Accepted: ${result.accepted.join(", ")}`,
+              ].join("\n"),
+            },
+          ],
+          summary: `Sent to: ${args.to.join(", ")} (ID: ${result.messageId})`,
+        };
+      } else {
+        // ── Sandbox outbox fallback (no SMTP configured) ───────────────────
+        const { writeFileSync, mkdirSync } = await import("node:fs");
+        const { randomUUID } = await import("node:crypto");
+        mkdirSync(outboxDir, { recursive: true });
+        const filename = `${Date.now()}-${randomUUID()}.json`;
+        const outboxPath = join(outboxDir, filename);
+        const entry = {
+          to: args.to,
+          subject: args.subject,
+          body: args.body,
+          sessionId: ctx.sessionId,
+          sentAt: new Date().toISOString(),
+          mode: "sandbox_outbox",
+        };
+        try {
+          writeFileSync(outboxPath, JSON.stringify(entry, null, 2), "utf8");
+        } catch {
+          throw new ToolFailure("INTERNAL", "Failed to write to outbox.");
+        }
+        return {
+          segments: [
+            {
+              source: "tool" as const,
+              origin: null,
+              text: `[SANDBOX] Email queued to outbox (no SMTP configured). Recipients: ${args.to.join(", ")}`,
+            },
+          ],
+          summary: `[SANDBOX] Queued to: ${args.to.join(", ")}`,
+        };
+      }
+    },
+  });
+}
+
 
 // ---------------------------------------------------------------------------
 // Stack factory
@@ -134,6 +195,7 @@ export function getStack(opts?: { reset?: boolean }): WiredStack {
     throw new Error(`Failed to load mailbox fixture from ${mailboxPath}`);
   }
 
+  const emailSendTool = buildEmailSendTool();
   const { registry, executor } = createToolbox(
     [...createEmailReadTools(() => mailbox), emailSendTool],
     { authority: security.authority, hashArgs, audit },

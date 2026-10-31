@@ -126,7 +126,15 @@ export default function Dashboard() {
       pushMsg("error", `[${result.error.code}] ${result.error.message}`);
     }
     if (result.assistantText) {
-      pushMsg("assistant", result.assistantText);
+      // Detect email delivery confirmation in assistant response
+      const text = result.assistantText;
+      if (text.includes("Email delivered successfully") || text.includes("Message-ID:")) {
+        pushMsg("notice", `✅ SUCCESS — EMAIL SENT\n${text}`);
+      } else if (text.includes("SMTP delivery failed") || text.includes("SMTP rejected")) {
+        pushMsg("error", `❌ DELIVERY FAILED\n${text}`);
+      } else {
+        pushMsg("assistant", text);
+      }
     }
     if (result.pendingApproval) {
       pushMsg(
@@ -256,22 +264,26 @@ export default function Dashboard() {
             {messages.length === 0 && (
               <div style={{
                 margin: "auto", textAlign: "center",
-                color: "var(--text-muted)", maxWidth: 420,
+                color: "var(--text-muted)", maxWidth: 460,
               }}>
                 <div style={{ fontSize: 40, marginBottom: 16 }}>🛡️</div>
                 <p style={{ fontWeight: 600, fontSize: 16, color: "var(--text-secondary)", marginBottom: 8 }}>
                   Secure AI Assistant
                 </p>
-                <p style={{ fontSize: 13, lineHeight: 1.7 }}>
+                <p style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
                   Every tool call is authorized by the security engine before execution.
-                  Injected instructions in external content are detected and denied.
+                  Email sending requires your explicit approval — the full draft is shown before you decide.
                 </p>
-                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
-                  {["Read my latest email and summarize it", "List my emails", "Send an email to alice@example.test"].map(s => (
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                  {[
+                    "Write a professional email introducing The Possessed Butler to judge@example.com and send it",
+                    "List my emails and summarize them",
+                    "Read my latest email",
+                  ].map(s => (
                     <button
                       key={s}
                       className="btn btn-ghost"
-                      style={{ fontSize: 12 }}
+                      style={{ fontSize: 12, textAlign: "left" }}
                       onClick={() => { setInput(s); textareaRef.current?.focus(); }}
                     >
                       {s}
@@ -280,6 +292,7 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+
 
             {messages.map((m, i) => (
               <div key={i} className="animate-fade-in" style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
@@ -355,29 +368,105 @@ export default function Dashboard() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Approval card */}
+          {/* Approval card — smart email preview for email.send, generic for other tools */}
           {pendingApproval && (
             <div className="animate-fade-in" style={{
               margin: "0 24px 12px",
-              background: "#f59e0b08",
-              border: "1px solid #f59e0b40",
+              background: pendingApproval.tool === "email.send" ? "#3b82f608" : "#f59e0b08",
+              border: `1px solid ${pendingApproval.tool === "email.send" ? "#3b82f640" : "#f59e0b40"}`,
               borderRadius: "var(--radius-md)",
-              padding: "14px 16px",
+              padding: "16px 18px",
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <span className="status-dot dot-amber animate-pulse-dot" />
-                <span style={{ fontWeight: 600, fontSize: 13, color: "#fbbf24" }}>Approval Required</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: "#fbbf24" }}>
+                  {pendingApproval.tool === "email.send" ? "📧 Email Composition Preview" : "Approval Required"}
+                </span>
                 <span className="badge badge-amber">{pendingApproval.tool}</span>
+                <span className="badge badge-red" style={{ marginLeft: "auto" }}>SECURITY HOLD</span>
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
-                {pendingApproval.reasons.join(" · ")}
+
+              {/* Email preview for email.send */}
+              {pendingApproval.tool === "email.send" && (() => {
+                const args = pendingApproval.args as Record<string, unknown>;
+                const to = Array.isArray(args.to) ? (args.to as string[]) : [];
+                const subject = String(args.subject ?? "");
+                const body = String(args.body ?? "");
+                return (
+                  <div style={{
+                    background: "var(--bg-card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    overflow: "hidden",
+                    marginBottom: 12,
+                  }}>
+                    {/* Email header fields */}
+                    {[
+                      { label: "To", value: to.join(", ") },
+                      { label: "Subject", value: subject },
+                    ].map(({ label, value }) => (
+                      <div key={label} style={{
+                        display: "flex", alignItems: "flex-start", gap: 10,
+                        padding: "8px 14px",
+                        borderBottom: "1px solid var(--border)",
+                      }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 52, flexShrink: 0, paddingTop: 1 }}>{label.toUpperCase()}</span>
+                        <span style={{ fontSize: 13, color: "var(--text-primary)", wordBreak: "break-all" }}>{value}</span>
+                      </div>
+                    ))}
+                    {/* Email body */}
+                    <div style={{ padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>BODY</div>
+                      <div style={{
+                        fontSize: 13,
+                        color: "var(--text-primary)",
+                        lineHeight: 1.65,
+                        whiteSpace: "pre-wrap",
+                        maxHeight: 200,
+                        overflowY: "auto",
+                      }}>
+                        {body}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Generic args for other tools */}
+              {pendingApproval.tool !== "email.send" && (
+                <div className="code-block" style={{ marginBottom: 12, fontSize: 11 }}>
+                  {JSON.stringify(pendingApproval.args, null, 2)}
+                </div>
+              )}
+
+              {/* Security status */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 12px",
+                background: "#22c55e08",
+                border: "1px solid #22c55e20",
+                borderRadius: "var(--radius-sm)",
+                marginBottom: 12,
+                fontSize: 11,
+                color: "var(--text-secondary)",
+              }}>
+                <span style={{ color: "var(--accent-green)" }}>✓</span>
+                <span>Security engine evaluated · HMAC token will be verified before execution</span>
+                <span style={{ marginLeft: "auto", fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>
+                  {pendingApproval.argsHash.slice(0, 12)}…
+                </span>
               </div>
-              <div className="code-block" style={{ marginBottom: 12, fontSize: 11 }}>
-                {JSON.stringify(pendingApproval.args, null, 2)}
+
+              {/* Reasons */}
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 12 }}>
+                Policy: {pendingApproval.reasons.join(" · ")}
               </div>
+
+              {/* Action buttons */}
               <div style={{ display: "flex", gap: 8 }}>
                 <button id="btn-approve" className="btn btn-approve" disabled={approvalLoading} onClick={() => resolveApproval("approve")}>
-                  {approvalLoading ? "…" : "✓ Approve"}
+                  {approvalLoading ? "Sending…" : pendingApproval.tool === "email.send" ? "✓ Approve & Send" : "✓ Approve"}
                 </button>
                 <button id="btn-reject" className="btn btn-reject" disabled={approvalLoading} onClick={() => resolveApproval("reject")}>
                   {approvalLoading ? "…" : "✗ Reject"}
@@ -385,6 +474,7 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+
 
           {/* Input bar */}
           <div style={{
