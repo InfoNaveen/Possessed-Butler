@@ -14,5 +14,6 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts", "src/eval/**/*.test.ts"],
     environment: "node",
+    globals: true,
   },
 });

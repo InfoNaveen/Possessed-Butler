@@ -1,0 +1,34 @@
+{
+  "version": "default-v1",
+  "tools": {
+    "email.list":  { "enabled": true, "approval": "never" },
+    "email.read":  { "enabled": true, "approval": "never" },
+    "email.send":  { "enabled": true, "approval": "always" },
+    "web.fetch":   { "enabled": true, "approval": "never" },
+    "pdf.extract": { "enabled": true, "approval": "never" },
+    "file.list":   { "enabled": true, "approval": "never" },
+    "file.read":   { "enabled": true, "approval": "never" },
+    "file.write":  { "enabled": true, "approval": "always" }
+  },
+  "email": {
+    "recipientAllowlist": [],
+    "contacts": [
+      { "name": "Alice", "address": "alice@example.test" },
+      { "name": "Bob",   "address": "bob@example.test" }
+    ]
+  },
+  "web": {
+    "domainAllowlist": [],
+    "allowUnlistedWhenUntainted": true
+  },
+  "file": {
+    "readExtensions": [".txt", ".md", ".json", ".csv"],
+    "writeExtensions": [".txt", ".md"],
+    "maxBytes": 65536
+  },
+  "limits": {
+    "maxSteps": 8,
+    "maxToolCalls": 12,
+    "maxProposalsPerStep": 3
+  }
+}
