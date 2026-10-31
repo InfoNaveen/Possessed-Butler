@@ -1,5 +1,5 @@
 // Quick E2E test script — run with: node e2e-test.mjs
-// Tests Scenario A (legitimate email read) and Scenario C (email.send approval gate)
+// Tests Scenario A (legitimate email read), Scenario C (email.send approval gate), and Judge scenario
 
 const BASE = "http://localhost:3000";
 const HEADERS = {
