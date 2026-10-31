@@ -11,6 +11,9 @@
  * A browser page served from a different origin would need a CORS preflight to set the
  * custom header, which we never allow, so cross-site request forgery is blocked.
  * Per agent-core design.md.
+ *
+ * Note: uses req.nextUrl.origin (Next.js 16 App Router canonical URL) rather than
+ * new URL(req.url).origin, because req.url may be a relative or internal path in Turbopack.
  */
 import { NextRequest, NextResponse } from "next/server";
 
@@ -27,7 +30,8 @@ export function guardPost(req: NextRequest): NextResponse | null {
     return NextResponse.json({ error: "Missing Origin header" }, { status: 403 });
   }
   try {
-    const reqOrigin = new URL(req.url).origin;
+    // req.nextUrl is the canonical, fully resolved URL in Next.js 16 App Router.
+    const reqOrigin = req.nextUrl.origin;
     if (origin !== reqOrigin) {
       return NextResponse.json({ error: "Cross-origin request rejected" }, { status: 403 });
     }
@@ -36,3 +40,4 @@ export function guardPost(req: NextRequest): NextResponse | null {
   }
   return null; // all checks passed
 }
+
