@@ -225,7 +225,7 @@ export interface AuditEvent {
 
 export interface AuditLog {
   append(event: Omit<AuditEvent, "id" | "ts">): AuditEvent;
-  list(sessionId: string): AuditEvent[];
+  list(sessionId?: string): AuditEvent[];
 }
 
 // 6. LLM providers

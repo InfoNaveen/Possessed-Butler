@@ -1,11 +1,8 @@
 /**
- * POST /api/agent
+ * POST /api/agent — Start or continue an agent turn. Returns AgentTurnResult.
+ * GET  /api/agent — List active sessions or inspect specific session.
  *
- * Start or continue an agent turn. Returns AgentTurnResult.
  * Reads from the real stack (real security engine).
- *
- * Per Next.js 16 / Cache Components guidance: no `runtime` export, no `dynamic` export.
- * Reading request.json() makes this run at request time automatically.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -41,7 +38,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const result = await agent.runTurn(parsed.data);
     return NextResponse.json(result);
   } catch (err) {
-    // Stack init failures (bad config, missing mailbox, etc.) are caught here
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const err = configError();
+  if (err) return NextResponse.json({ error: `Agent not configured: ${err}` }, { status: 503 });
+
+  const sessionId = req.nextUrl.searchParams.get("sessionId");
+  try {
+    const { agent } = getStack();
+    if (sessionId) {
+      const session = agent.getSession(sessionId);
+      if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      return NextResponse.json(session);
+    }
+    const sessions = (agent as unknown as { listSessions?: () => unknown }).listSessions
+      ? (agent as unknown as { listSessions: () => unknown }).listSessions()
+      : [];
+    return NextResponse.json({ sessions });
+  } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

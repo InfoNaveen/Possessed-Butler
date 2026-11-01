@@ -84,6 +84,7 @@ export interface Agent {
   runTurn(input: { sessionId?: string; message: string }): Promise<AgentTurnResult>;
   resumeAfterApproval(approvalId: string, verdict: "approve" | "reject", callerSessionId?: string): Promise<AgentTurnResult>;
   getSession(sessionId: string): SessionView | undefined;
+  listSessions?(): SessionView[];
 }
 
 /** Thrown when an audit write fails. Ends the session (security.md rule 6 / requirement 6.8). */
@@ -517,6 +518,16 @@ export function createAgent(deps: AgentDeps): Agent {
         }
         return loop(session);
       });
+    },
+
+    listSessions() {
+      return [...sessions.values()].map((s) => ({
+        id: s.id,
+        status: s.status,
+        tainted: s.security.tainted,
+        toolCallCount: s.security.toolCallCount,
+        pendingApprovalId: s.pendingApprovalId,
+      }));
     },
 
     getSession(sessionId) {

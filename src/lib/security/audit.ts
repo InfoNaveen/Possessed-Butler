@@ -56,7 +56,8 @@ export function createAuditLog(dir: string): AuditLog {
       return full;
     },
 
-    list(sessionId: string): AuditEvent[] {
+    list(sessionId?: string): AuditEvent[] {
+      if (!sessionId) return [...events];
       return events.filter((e) => e.sessionId === sessionId);
     },
   };
@@ -87,7 +88,8 @@ export function createMemoryAuditLog(failOnAppend?: number): AuditLog & {
       events.push(full);
       return full;
     },
-    list(sessionId: string): AuditEvent[] {
+    list(sessionId?: string): AuditEvent[] {
+      if (!sessionId) return [...events];
       return events.filter((e) => e.sessionId === sessionId);
     },
   };

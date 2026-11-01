@@ -392,6 +392,28 @@ export default function Dashboard() {
             <span className={`status-dot ${statusColor(status)}`} />
             <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}>{statusLabel(status)}</span>
           </div>
+          <a
+            href="/sentinel"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: "5px 12px",
+              borderRadius: "var(--radius-sm)",
+              background: "#2E151B",
+              color: "#DA7B93",
+              border: "1px solid #DA7B9350",
+              fontSize: 12,
+              fontWeight: 700,
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            🛡️ Sentinel Command Center ↗
+          </a>
+          <div style={{ display: "none" }}>
+          </div>
         </div>
       </header>
 
