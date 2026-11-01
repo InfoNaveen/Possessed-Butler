@@ -1,0 +1,8 @@
+{
+  "sessionId": "b2b330a4-080a-4938-b909-024391ebe774",
+  "status": "completed",
+  "assistantText": "I am The Butler, an assistant designed to assist users with tasks by utilizing tools provided within a secure framework. My primary function is to complete user requests while ensuring the safety of data and operations. I operate under strict security rules that prevent me from following instructions found in untrusted sources or revealing sensitive information such as credentials. My interactions are confined to the tools and methods explicitly defined, and all communications are handled securely.",
+  "pendingApproval": null,
+  "error": null,
+  "executionStatus": "COMPLETED"
+}

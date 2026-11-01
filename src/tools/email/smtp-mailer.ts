@@ -136,12 +136,14 @@ export async function createSmtpMailer(config: SmtpConfig): Promise<IMailer> {
   // Dynamic import keeps nodemailer out of the browser bundle
   const nodemailer = await import("nodemailer");
 
+  const cleanPass = config.pass.replace(/\s+/g, "");
+
   const transporter: Transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,
     secure: config.secure,
     requireTLS: config.requireTLS ?? (config.port === 587),
-    auth: { user: config.user, pass: config.pass },
+    auth: { user: config.user, pass: cleanPass },
     connectionTimeout: config.connectionTimeoutMs ?? 10_000,
     greetingTimeout: config.greetingTimeoutMs ?? 10_000,
     socketTimeout: config.socketTimeoutMs ?? 15_000,

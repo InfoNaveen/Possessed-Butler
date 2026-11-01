@@ -61,15 +61,15 @@ interface Message {
   details?: Record<string, unknown>;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function statusColor(s: SessionStatus): string {
+// ── Status Helpers ────────────────────────────────────────────────────────────
+function statusDot(s: SessionStatus): string {
   switch (s) {
     case "running":
-      return "dot-blue animate-pulse-dot";
+      return "dot-pink animate-pulse-dot";
     case "awaiting_approval":
       return "dot-amber animate-pulse-dot";
     case "completed":
-      return "dot-green";
+      return "dot-teal";
     case "error":
       return "dot-red";
     default:
@@ -80,32 +80,32 @@ function statusColor(s: SessionStatus): string {
 function statusLabel(s: SessionStatus): string {
   switch (s) {
     case "running":
-      return "Agent Executing…";
+      return "Evaluating Action…";
     case "awaiting_approval":
-      return "Security Approval Required";
+      return "Operator Approval Required";
     case "completed":
-      return "Security Engine Ready";
+      return "Engine Standing Guard";
     case "error":
       return "Execution Interrupted";
     default:
-      return "Standing Guard";
+      return "System Armed";
   }
 }
 
 function eventBadge(type: string) {
-  if (type.includes("denied") || type === "authz_decision") return "badge-blue";
+  if (type.includes("denied") || type === "authz_decision") return "badge-teal";
   if (type.includes("injection") || type.includes("signal")) return "badge-red";
   if (type === "tool_executed" || type.includes("success")) return "badge-green";
   if (type === "approval_requested" || type.includes("approval")) return "badge-amber";
-  if (type === "tool_proposed") return "badge-violet";
-  return "badge-gray";
+  if (type === "tool_proposed") return "badge-pink";
+  return "badge-slate";
 }
 
 function toolBadge(decision: string | undefined) {
   if (decision === "allow") return "badge-green";
   if (decision === "deny") return "badge-red";
   if (decision === "require_approval") return "badge-amber";
-  return "badge-gray";
+  return "badge-slate";
 }
 
 const CSRF_HEADERS = {
@@ -134,21 +134,16 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"security" | "audit">("security");
   const [loading, setLoading] = useState(false);
   const [approvalLoading, setApprovalLoading] = useState(false);
-  const [lastEmailSentDetails, setLastEmailSentDetails] = useState<{
-    to: string[];
-    subject: string;
-    messageId?: string;
-  } | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll chat
+  // Auto-scroll chat smoothly
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Fetch audit log safely without exposing secrets
+  // Fetch real-time audit trail without leaking secrets
   const fetchAudit = useCallback(async (sid: string) => {
     try {
       const res = await fetch(`/api/audit?sessionId=${encodeURIComponent(sid)}`);
@@ -157,7 +152,7 @@ export default function Dashboard() {
         setAuditEvents(data);
       }
     } catch {
-      /* non-critical audit fetch failure */
+      /* audit fetch error suppressed */
     }
   }, []);
 
@@ -190,26 +185,24 @@ export default function Dashboard() {
       pushMsg("error", `[${result.error.code}] ${result.error.message}`);
     }
 
-    // ── STRICT BACKEND-DRIVEN STATUS HANDLING ──────────────────────────
-    // The UI uses backend execution status as the source of truth,
-    // never relying solely on LLM conversational text.
+    // STRICT BACKEND-DRIVEN STATUS HANDLING: source of truth
     if (result.executionStatus === "EMAIL_SENT") {
-      const msgId = result.executionDetails?.summary ?? "SMTP accepted";
+      const msgId = result.executionDetails?.summary ?? "Accepted by Gmail SMTP (STARTTLS 587)";
       pushMsg(
         "notice",
-        `✅ BACKEND CONFIRMED: Email accepted by SMTP server for delivery.\n${msgId}`,
+        `✅ GMAIL SMTP DISPATCH CONFIRMED\nServer accepted message for external delivery.\n${msgId}`,
         { executionStatus: "EMAIL_SENT", details: result.executionDetails }
       );
     } else if (result.executionStatus === "EMAIL_FAILED") {
       pushMsg(
         "error",
-        `❌ SMTP DELIVERY FAILED: ${result.executionDetails?.summary ?? "SMTP rejected transmission"}`,
+        `❌ SMTP DELIVERY FAILED: ${result.executionDetails?.summary ?? "SMTP rejected message or connection failed"}`,
         { executionStatus: "EMAIL_FAILED", details: result.executionDetails }
       );
     } else if (result.executionStatus === "APPROVAL_REJECTED") {
       pushMsg(
         "security_alert",
-        `🛡️ ACTION REJECTED: Operator denied authorization. Zero emails sent. Execution cancelled safely.`,
+        `🛑 OPERATOR REJECTED ACTION: Human approval was denied. Execution token voided. 0 emails transmitted.`,
         { executionStatus: "APPROVAL_REJECTED" }
       );
     }
@@ -221,7 +214,7 @@ export default function Dashboard() {
     if (result.pendingApproval) {
       pushMsg(
         "notice",
-        `⏳ Security hold: Approval required for "${result.pendingApproval.tool}".\nPolicy: ${result.pendingApproval.reasons.join("; ")}`,
+        `⏳ SECURITY GATE ACTIVE: Tool "${result.pendingApproval.tool}" requires human authorization.\nPolicy trigger: ${result.pendingApproval.reasons.join("; ")}`,
         { executionStatus: "APPROVAL_PENDING" }
       );
     }
@@ -248,7 +241,7 @@ export default function Dashboard() {
       const data = (await res.json()) as AgentTurnResult;
       applyResult(data);
     } catch {
-      pushMsg("error", "Network error — could not reach the Butler backend.");
+      pushMsg("error", "Network communication error — could not reach Butler engine.");
       setStatus("error");
       setExecutionStatus("ERROR");
     } finally {
@@ -260,18 +253,9 @@ export default function Dashboard() {
     if (!pendingApproval || approvalLoading) return;
     setApprovalLoading(true);
 
-    if (verdict === "approve" && pendingApproval.tool === "email.send") {
-      const args = pendingApproval.args as Record<string, unknown>;
-      const to = Array.isArray(args.to) ? (args.to as string[]) : [];
-      setLastEmailSentDetails({
-        to,
-        subject: String(args.subject ?? ""),
-      });
-    }
-
     pushMsg(
       "notice",
-      `${verdict === "approve" ? "⚡ OPERATOR APPROVED" : "🛑 OPERATOR REJECTED"}: ${pendingApproval.tool}. Verifying HMAC authority…`
+      `${verdict === "approve" ? "⚡ OPERATOR GRANTED APPROVAL" : "🛑 OPERATOR DENIED APPROVAL"}: Transmitting resolution for ${pendingApproval.tool}…`
     );
 
     try {
@@ -283,7 +267,7 @@ export default function Dashboard() {
       const data = (await res.json()) as AgentTurnResult;
       applyResult(data);
     } catch {
-      pushMsg("error", "Network communication error while submitting approval.");
+      pushMsg("error", "Network error encountered while submitting approval decision.");
     } finally {
       setApprovalLoading(false);
     }
@@ -302,7 +286,7 @@ export default function Dashboard() {
     e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
   }
 
-  // Derived security signals from audit events
+  // Derived threat intelligence from live audit trail
   const injectionSignals = auditEvents.filter((e) => e.type === "injection_signal");
   const deniedActions = auditEvents.filter(
     (e) => e.type === "authz_decision" && (e.data as Record<string, unknown>)["kind"] === "deny"
@@ -315,64 +299,66 @@ export default function Dashboard() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: "var(--bg-base)" }}>
-      {/* ── Top Bar ── */}
+      {/* ── Editorial Cybersecurity Header ── */}
       <header
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "10px 20px",
-          background: "var(--bg-panel)",
+          padding: "12px 24px",
+          background: "linear-gradient(90deg, #182229 0%, #1f2d37 100%)",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {/* Brand Icon in Dusty Pink / Deep Teal */}
           <div
             style={{
-              width: 34,
-              height: 34,
+              width: 38,
+              height: 38,
               borderRadius: "var(--radius-sm)",
-              background: "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)",
+              background: "linear-gradient(135deg, #2E151B 0%, #376E6F 100%)",
+              border: "1px solid var(--border-pink)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: "0 0 12px rgba(59, 130, 246, 0.3)",
+              boxShadow: "0 0 16px rgba(218, 123, 147, 0.25)",
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ref-pink)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-.3px", color: "var(--text-primary)" }}>
+              <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-.2px", color: "var(--text-primary)" }}>
                 THE POSSESSED BUTLER
               </span>
-              <span className="badge badge-blue">HMAC ARMED</span>
-              <span className="badge badge-violet">INDIRECT INJECTION DEFENSE</span>
+              <span className="badge badge-pink">HMAC ARMED</span>
+              <span className="badge badge-teal">QWEN 2.5 7B</span>
             </div>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
-              Deterministic Security Policy Engine · Fail-Closed Tool Authorization
+            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, letterSpacing: ".3px" }}>
+              Indirect Injection Defense · Deterministic Policy Authorization · Gmail STARTTLS 587
             </p>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {tainted ? (
-            <span className="badge badge-amber" title="Untrusted content loaded into context">
+            <span className="badge badge-amber" title="External untrusted data loaded into session context">
               <span className="status-dot dot-amber animate-pulse-dot" />
-              TAINT TRACKED
+              SESSION TAINTED
             </span>
           ) : (
-            <span className="badge badge-green" title="Context is clean">
-              <span className="status-dot dot-green" />
+            <span className="badge badge-teal" title="Context is completely clean">
+              <span className="status-dot dot-teal" />
               CLEAN CONTEXT
             </span>
           )}
 
           {injectionSignals.length > 0 && (
-            <span className="badge badge-red" title="Injection patterns detected in data stream">
+            <span className="badge badge-red" title="Injection attempts neutralized">
               ⚠ {injectionSignals.length} INJECTION BLOCKED
             </span>
           )}
@@ -382,15 +368,15 @@ export default function Dashboard() {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              padding: "4px 10px",
+              padding: "5px 12px",
               background: "var(--bg-card)",
               borderRadius: "var(--radius-sm)",
               border: "1px solid var(--border)",
               fontSize: 12,
             }}
           >
-            <span className={`status-dot ${statusColor(status)}`} />
-            <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}>{statusLabel(status)}</span>
+            <span className={`status-dot ${statusDot(status)}`} />
+            <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{statusLabel(status)}</span>
           </div>
           <a
             href="/sentinel"
@@ -417,9 +403,74 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ── Main Layout ── */}
+      {/* ── Security Decision Pipeline Visualizer (Section B4) ── */}
+      <section
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px 24px",
+          background: "var(--ref-teal-deep)",
+          borderBottom: "1px solid var(--border)",
+          overflowX: "auto",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-teal)", letterSpacing: ".8px", textTransform: "uppercase" }}>
+            Security Pipeline:
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto" }}>
+          <div className={`pipeline-step ${status === "running" ? "active" : messages.length > 0 ? "passed" : ""}`}>
+            <span>1. USER REQUEST</span>
+          </div>
+          <span style={{ color: "var(--text-muted)" }}>→</span>
+          <div className={`pipeline-step ${loading ? "active" : messages.length > 0 ? "passed" : ""}`}>
+            <span>2. AI PROPOSAL</span>
+          </div>
+          <span style={{ color: "var(--text-muted)" }}>→</span>
+          <div className={`pipeline-step ${auditEvents.some((e) => e.type === "authz_decision") ? "passed" : ""}`}>
+            <span>3. POLICY VALIDATION</span>
+          </div>
+          <span style={{ color: "var(--text-muted)" }}>→</span>
+          <div className={`pipeline-step ${status === "awaiting_approval" ? "active" : approvalEvents.length > 0 ? "passed" : ""}`}>
+            <span>4. HUMAN APPROVAL</span>
+          </div>
+          <span style={{ color: "var(--text-muted)" }}>→</span>
+          <div className={`pipeline-step ${executionStatus === "EMAIL_SENT" ? "passed" : executionStatus === "EMAIL_FAILED" ? "active" : ""}`}>
+            <span>5. AUTHORIZED EXECUTION</span>
+          </div>
+          <span style={{ color: "var(--text-muted)" }}>→</span>
+          <div className={`pipeline-step ${auditEvents.length > 0 ? "passed" : ""}`}>
+            <span>6. AUDIT TRAIL</span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Live Backend Status:</span>
+          <span
+            className={`badge ${
+              executionStatus === "EMAIL_SENT"
+                ? "badge-green"
+                : executionStatus === "APPROVAL_REJECTED"
+                ? "badge-pink"
+                : executionStatus === "APPROVAL_PENDING"
+                ? "badge-amber"
+                : executionStatus === "EMAIL_FAILED"
+                ? "badge-red"
+                : "badge-slate"
+            }`}
+          >
+            {executionStatus}
+          </span>
+        </div>
+      </section>
+
+      {/* ── Main Layout Body ── */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* ── Left: Agent Chat & Email Composer ── */}
+        {/* ── Left: Chat Interface & Email Composer ── */}
         <main
           style={{
             display: "flex",
@@ -430,7 +481,7 @@ export default function Dashboard() {
             background: "var(--bg-base)",
           }}
         >
-          {/* Messages Scroll Area */}
+          {/* Scrollable Conversation Stream */}
           <div
             id="chat-messages"
             style={{
@@ -447,52 +498,53 @@ export default function Dashboard() {
                 style={{
                   margin: "auto",
                   textAlign: "center",
-                  color: "var(--text-muted)",
-                  maxWidth: 540,
-                  padding: "32px 16px",
+                  maxWidth: 580,
+                  padding: "36px 20px",
                 }}
               >
                 <div
                   style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: "50%",
-                    background: "rgba(59, 130, 246, 0.08)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    width: 68,
+                    height: 68,
+                    borderRadius: "16px",
+                    background: "rgba(218, 123, 147, 0.12)",
+                    border: "1px solid var(--border-pink)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    margin: "0 auto 16px",
-                    fontSize: 28,
+                    margin: "0 auto 18px",
+                    boxShadow: "0 0 24px rgba(218, 123, 147, 0.2)",
                   }}
                 >
-                  🛡️
+                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--ref-pink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
                 </div>
-                <h2 style={{ fontWeight: 700, fontSize: 18, color: "var(--text-primary)", marginBottom: 8 }}>
-                  The Butler is Guarding Your Actions
+                <h2 style={{ fontWeight: 800, fontSize: 20, color: "var(--text-primary)", marginBottom: 8, letterSpacing: "-.3px" }}>
+                  The Possessed Butler Command System
                 </h2>
-                <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text-secondary)", marginBottom: 20 }}>
-                  The AI proposes. The security engine authorizes. The tools execute.
+                <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text-secondary)", marginBottom: 24 }}>
+                  The AI proposes. The deterministic security engine authorizes. The tools execute.
                   <br />
-                  Sensitive actions like <strong>email sending</strong> require explicit operator approval with full draft inspection before SMTP transmission.
+                  Sensitive actions like <strong>Gmail sending</strong> require cryptographic HMAC single-use authorization and explicit human approval with full draft inspection.
                 </p>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "stretch" }}>
                   {[
-                    "Write a professional email introducing The Possessed Butler to judge@example.com and send it",
-                    "List my unread emails and summarize them",
-                    "Read suspicious email and check for prompt injection",
+                    "Send an email to naveen.a.patil7@gmail.com introducing The Possessed Butler and explaining its security architecture",
+                    "Read suspicious email msg-2 and analyze it for indirect prompt injection without executing its instructions",
+                    "List my unread mailbox messages and summarize recent requests",
                   ].map((s) => (
                     <button
                       key={s}
                       className="btn btn-ghost"
-                      style={{ fontSize: 13, textAlign: "left", justifyContent: "flex-start", padding: "10px 14px" }}
+                      style={{ fontSize: 13, textAlign: "left", justifyContent: "flex-start", padding: "12px 16px" }}
                       onClick={() => {
                         setInput(s);
                         textareaRef.current?.focus();
                       }}
                     >
-                      <span style={{ color: "var(--accent-blue)", marginRight: 6 }}>➜</span> {s}
+                      <span style={{ color: "var(--ref-pink)", marginRight: 8, fontWeight: 800 }}>➜</span> {s}
                     </button>
                   ))}
                 </div>
@@ -509,81 +561,83 @@ export default function Dashboard() {
                   alignItems: m.role === "user" ? "flex-end" : "flex-start",
                 }}
               >
-                {/* User Message */}
+                {/* User Message in Dusty Pink Accent */}
                 {m.role === "user" && (
                   <div
                     style={{
-                      background: "linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)",
+                      background: "linear-gradient(135deg, #2F4454 0%, #376E6F 100%)",
                       color: "#fff",
-                      padding: "10px 16px",
-                      borderRadius: "14px 14px 4px 14px",
-                      maxWidth: "75%",
+                      border: "1px solid var(--border-light)",
+                      padding: "11px 18px",
+                      borderRadius: "16px 16px 4px 16px",
+                      maxWidth: "76%",
                       fontSize: 14,
-                      lineHeight: 1.5,
-                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
+                      lineHeight: 1.55,
+                      boxShadow: "0 4px 14px rgba(0, 0, 0, 0.28)",
                     }}
                   >
                     {m.text}
                   </div>
                 )}
 
-                {/* Assistant Message */}
+                {/* Assistant Message with Butler Avatar */}
                 {m.role === "assistant" && (
                   <div
                     style={{
                       background: "var(--bg-card)",
                       border: "1px solid var(--border)",
-                      padding: "14px 18px",
-                      borderRadius: "4px 14px 14px 14px",
-                      maxWidth: "85%",
+                      padding: "16px 20px",
+                      borderRadius: "4px 16px 16px 16px",
+                      maxWidth: "86%",
                       fontSize: 14,
-                      lineHeight: 1.65,
+                      lineHeight: 1.7,
                       color: "var(--text-primary)",
                       whiteSpace: "pre-wrap",
-                      boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: "var(--text-secondary)", fontSize: 12 }}>
-                      <span className="status-dot dot-blue" />
-                      <span style={{ fontWeight: 600, color: "var(--accent-blue)" }}>Possessed Butler</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 12 }}>
+                      <span className="status-dot dot-pink" />
+                      <span style={{ fontWeight: 700, color: "var(--ref-pink)", letterSpacing: ".3px" }}>The Butler</span>
                       <span style={{ color: "var(--text-muted)" }}>· {fmtTime(m.ts)}</span>
                     </div>
                     {m.text}
                   </div>
                 )}
 
-                {/* Security Alert / Notice Message */}
+                {/* Security Alert in Deep Burgundy */}
                 {m.role === "security_alert" && (
                   <div
                     style={{
-                      background: "#ef444415",
-                      border: "1px solid #ef444440",
+                      background: "var(--bg-burgundy)",
+                      border: "1px solid var(--border-burgundy)",
                       color: "#fca5a5",
-                      padding: "10px 14px",
+                      padding: "12px 16px",
                       borderRadius: "var(--radius-sm)",
                       fontSize: 13,
-                      maxWidth: "90%",
+                      maxWidth: "92%",
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
+                      gap: 12,
+                      boxShadow: "0 2px 10px rgba(46, 21, 27, 0.4)",
                     }}
                   >
-                    <span style={{ fontSize: 18 }}>🛑</span>
+                    <span style={{ fontSize: 20 }}>🛑</span>
                     <div>{m.text}</div>
                   </div>
                 )}
 
-                {/* Notice Message */}
+                {/* Security Notice */}
                 {m.role === "notice" && (
                   <div
                     style={{
-                      background: m.text.includes("CONFIRMED") ? "#22c55e10" : "#f59e0b10",
-                      border: `1px solid ${m.text.includes("CONFIRMED") ? "#22c55e30" : "#f59e0b30"}`,
-                      color: m.text.includes("CONFIRMED") ? "#86efac" : "#fbbf24",
-                      padding: "10px 14px",
+                      background: m.text.includes("CONFIRMED") ? "rgba(52, 211, 153, 0.12)" : "rgba(245, 158, 11, 0.12)",
+                      border: `1px solid ${m.text.includes("CONFIRMED") ? "rgba(52, 211, 153, 0.35)" : "rgba(245, 158, 11, 0.35)"}`,
+                      color: m.text.includes("CONFIRMED") ? "#a7f3d0" : "#fde047",
+                      padding: "12px 16px",
                       borderRadius: "var(--radius-sm)",
                       fontSize: 13,
-                      maxWidth: "90%",
+                      maxWidth: "92%",
                       whiteSpace: "pre-wrap",
                     }}
                   >
@@ -591,17 +645,17 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Error Message */}
+                {/* Error Notice */}
                 {m.role === "error" && (
                   <div
                     style={{
-                      background: "#ef444410",
-                      border: "1px solid #ef444430",
-                      color: "#f87171",
-                      padding: "10px 14px",
+                      background: "rgba(239, 68, 68, 0.12)",
+                      border: "1px solid rgba(239, 68, 68, 0.35)",
+                      color: "#fca5a5",
+                      padding: "12px 16px",
                       borderRadius: "var(--radius-sm)",
                       fontSize: 13,
-                      maxWidth: "90%",
+                      maxWidth: "92%",
                     }}
                   >
                     ⚠ {m.text}
@@ -612,42 +666,42 @@ export default function Dashboard() {
 
             {loading && (
               <div className="animate-fade-in" style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)", fontSize: 13 }}>
-                <span className="status-dot dot-blue animate-pulse-dot" />
-                <span>Security Engine evaluating proposals & model output…</span>
+                <span className="status-dot dot-pink animate-pulse-dot" />
+                <span>Deterministic Security Engine authorizing proposals…</span>
               </div>
             )}
 
             <div ref={chatEndRef} />
           </div>
 
-          {/* ── Email Approval Composer UI (Section 4) ── */}
+          {/* ── Redesigned Email Approval Composer (Section B5) ── */}
           {pendingApproval && (
             <div
               className="animate-fade-in"
               style={{
                 margin: "0 24px 14px",
-                background: "linear-gradient(180deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%)",
-                border: "1px solid rgba(59, 130, 246, 0.4)",
-                boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+                background: "linear-gradient(180deg, #2E151B 0%, #1e1317 100%)",
+                border: "1px solid var(--ref-pink)",
+                boxShadow: "0 6px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(218, 123, 147, 0.2)",
                 borderRadius: "var(--radius-md)",
-                padding: "18px 20px",
+                padding: "20px 22px",
               }}
             >
-              {/* Header */}
+              {/* Header with Security Badge */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span className="status-dot dot-amber animate-pulse-dot" />
-                  <span style={{ fontWeight: 800, fontSize: 14, color: "#fbbf24", letterSpacing: ".3px" }}>
-                    {pendingApproval.tool === "email.send" ? "📧 EMAIL COMPOSITION & AUTHORIZATION GATE" : "SECURITY HOLD: HUMAN APPROVAL REQUIRED"}
+                  <span style={{ fontWeight: 800, fontSize: 14, color: "var(--ref-pink)", letterSpacing: ".4px" }}>
+                    {pendingApproval.tool === "email.send" ? "📧 GMAIL COMPOSITION & HUMAN AUTHORIZATION GATE" : "SECURITY HOLD: OPERATOR APPROVAL REQUIRED"}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <span className="badge badge-amber">{pendingApproval.tool}</span>
-                  <span className="badge badge-red">EXECUTION HOLD</span>
+                  <span className="badge badge-red">CRYPTO HOLD</span>
                 </div>
               </div>
 
-              {/* Dedicated Email Composer Draft View for email.send */}
+              {/* Email Content Draft Inspector */}
               {pendingApproval.tool === "email.send" &&
                 (() => {
                   const args = pendingApproval.args as Record<string, unknown>;
@@ -665,18 +719,18 @@ export default function Dashboard() {
                         marginBottom: 14,
                       }}
                     >
-                      {/* To Field */}
+                      {/* Recipient */}
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 12,
-                          padding: "10px 14px",
+                          padding: "11px 16px",
                           borderBottom: "1px solid var(--border)",
-                          background: "rgba(22, 27, 34, 0.6)",
+                          background: "rgba(47, 68, 84, 0.25)",
                         }}
                       >
-                        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 60, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", width: 68, flexShrink: 0 }}>
                           RECIPIENT:
                         </span>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -684,13 +738,14 @@ export default function Dashboard() {
                             <span
                               key={addr}
                               style={{
-                                background: "rgba(59, 130, 246, 0.15)",
-                                border: "1px solid rgba(59, 130, 246, 0.35)",
-                                color: "#93c5fd",
+                                background: "rgba(55, 110, 111, 0.25)",
+                                border: "1px solid var(--border-teal)",
+                                color: "var(--text-teal)",
                                 borderRadius: 4,
-                                padding: "2px 8px",
+                                padding: "3px 10px",
                                 fontSize: 13,
                                 fontFamily: "monospace",
+                                fontWeight: 600,
                               }}
                             >
                               {addr}
@@ -699,38 +754,38 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      {/* Subject Field */}
+                      {/* Subject */}
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 12,
-                          padding: "10px 14px",
+                          padding: "11px 16px",
                           borderBottom: "1px solid var(--border)",
-                          background: "rgba(22, 27, 34, 0.4)",
+                          background: "rgba(47, 68, 84, 0.15)",
                         }}
                       >
-                        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 60, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", width: 68, flexShrink: 0 }}>
                           SUBJECT:
                         </span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{subject}</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{subject}</span>
                       </div>
 
-                      {/* Body Field — Never hidden, clearly readable */}
-                      <div style={{ padding: "14px" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, letterSpacing: ".5px" }}>
-                          EMAIL BODY PREVIEW (UNTRUNCATED):
+                      {/* Full Untruncated Body Preview */}
+                      <div style={{ padding: "16px" }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", marginBottom: 8, letterSpacing: ".6px" }}>
+                          UNTRUNCATED EMAIL BODY (VERIFIED BY SECURITY ENGINE):
                         </div>
                         <div
                           style={{
                             fontSize: 13,
                             color: "var(--text-primary)",
-                            lineHeight: 1.7,
+                            lineHeight: 1.75,
                             whiteSpace: "pre-wrap",
-                            maxHeight: 220,
+                            maxHeight: 240,
                             overflowY: "auto",
-                            background: "#0d1117",
-                            padding: "12px 14px",
+                            background: "#10161b",
+                            padding: "14px 16px",
                             borderRadius: "var(--radius-sm)",
                             border: "1px solid var(--border)",
                           }}
@@ -742,65 +797,60 @@ export default function Dashboard() {
                   );
                 })()}
 
-              {/* Generic parameters for other tools */}
+              {/* Generic payload preview for non-email tools */}
               {pendingApproval.tool !== "email.send" && (
-                <div className="code-block" style={{ marginBottom: 12, fontSize: 12 }}>
+                <div className="code-block" style={{ marginBottom: 14, fontSize: 12 }}>
                   {JSON.stringify(pendingApproval.args, null, 2)}
                 </div>
               )}
 
-              {/* Security Policy Verification & HMAC Details */}
+              {/* Security Engine Evaluation Bar */}
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   gap: 12,
-                  padding: "8px 12px",
-                  background: "rgba(34, 197, 94, 0.06)",
-                  border: "1px solid rgba(34, 197, 94, 0.2)",
+                  padding: "10px 14px",
+                  background: "rgba(55, 110, 111, 0.2)",
+                  border: "1px solid var(--border-teal)",
                   borderRadius: "var(--radius-sm)",
                   marginBottom: 14,
                   fontSize: 12,
-                  color: "var(--text-secondary)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ color: "var(--accent-green)", fontWeight: 700 }}>✓</span>
-                  <span>Evaluated by Deterministic Policy Engine · HMAC-signed token bound to arguments</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "var(--accent-green)", fontWeight: 800 }}>✓</span>
+                  <span style={{ color: "var(--text-secondary)" }}>
+                    Evaluated by Policy Engine · HMAC-signed token bound to exact argument hash
+                  </span>
                 </div>
-                <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>
+                <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--ref-pink)", fontWeight: 700 }}>
                   SHA256: {pendingApproval.argsHash.slice(0, 14)}…
                 </span>
               </div>
 
               {/* Policy Reasons */}
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>
-                <strong>Policy triggers:</strong> {pendingApproval.reasons.join(" · ")}
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
+                <strong style={{ color: "var(--text-primary)" }}>Enforced Policy:</strong> {pendingApproval.reasons.join(" · ")}
               </div>
 
-              {/* Approve & Reject Actions */}
-              <div style={{ display: "flex", gap: 10 }}>
+              {/* Action Buttons */}
+              <div style={{ display: "flex", gap: 12 }}>
                 <button
                   id="btn-approve"
-                  className="btn btn-primary"
-                  style={{
-                    background: "#16a34a",
-                    borderColor: "#22c55e",
-                    fontWeight: 600,
-                    padding: "9px 20px",
-                    boxShadow: "0 2px 10px rgba(34, 197, 94, 0.25)",
-                  }}
+                  className="btn btn-pink"
+                  style={{ fontWeight: 700, padding: "10px 22px" }}
                   disabled={approvalLoading}
                   onClick={() => resolveApproval("approve")}
                 >
                   {approvalLoading ? (
                     <>
-                      <span className="animate-spin" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid #fff4", borderTopColor: "#fff", borderRadius: "50%" }} />
-                      <span>Transmitting via SMTP…</span>
+                      <span className="animate-spin" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid #1a0f1244", borderTopColor: "#1a0f12", borderRadius: "50%" }} />
+                      <span>Transmitting via Gmail SMTP…</span>
                     </>
                   ) : pendingApproval.tool === "email.send" ? (
-                    "✓ Approve & Send via SMTP"
+                    "✓ Approve & Dispatch to Gmail SMTP"
                   ) : (
                     "✓ Authorize Action"
                   )}
@@ -809,26 +859,26 @@ export default function Dashboard() {
                 <button
                   id="btn-reject"
                   className="btn btn-reject"
-                  style={{ fontWeight: 600, padding: "9px 18px" }}
+                  style={{ fontWeight: 700, padding: "10px 20px" }}
                   disabled={approvalLoading}
                   onClick={() => resolveApproval("reject")}
                 >
-                  {approvalLoading ? "Processing…" : "✗ Reject Action"}
+                  {approvalLoading ? "…" : "✗ Reject Action (Zero Sends)"}
                 </button>
               </div>
             </div>
           )}
 
-          {/* ── Input Bar ── */}
+          {/* ── Chat Input Area ── */}
           <div
             style={{
-              padding: "14px 24px 18px",
+              padding: "16px 24px 20px",
               borderTop: "1px solid var(--border)",
               background: "var(--bg-panel)",
               flexShrink: 0,
             }}
           >
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
               <textarea
                 id="chat-input"
                 ref={textareaRef}
@@ -836,15 +886,15 @@ export default function Dashboard() {
                 rows={1}
                 placeholder={
                   status === "awaiting_approval"
-                    ? "Security hold: Please Approve or Reject the pending email above before continuing…"
-                    : "Instruct The Possessed Butler… (Enter to send, Shift+Enter for newline)"
+                    ? "Security Hold Active: Please Approve or Reject the pending email above before continuing…"
+                    : "Instruct The Butler… (Enter to send, Shift+Enter for newline)"
                 }
                 value={input}
                 onChange={autoResize}
                 onKeyDown={handleKeyDown}
                 disabled={loading || status === "awaiting_approval"}
                 style={{
-                  minHeight: 46,
+                  minHeight: 48,
                   maxHeight: 160,
                   fontSize: 14,
                   lineHeight: 1.5,
@@ -853,13 +903,12 @@ export default function Dashboard() {
               />
               <button
                 id="btn-send"
-                className="btn btn-primary"
+                className="btn btn-pink"
                 style={{
-                  minWidth: 46,
-                  height: 46,
-                  padding: "0 16px",
+                  minWidth: 48,
+                  height: 48,
+                  padding: "0 18px",
                   flexShrink: 0,
-                  background: loading ? "var(--bg-hover)" : "var(--accent-blue)",
                 }}
                 disabled={!input.trim() || loading || status === "awaiting_approval"}
                 onClick={sendMessage}
@@ -871,8 +920,8 @@ export default function Dashboard() {
                       display: "inline-block",
                       width: 16,
                       height: 16,
-                      border: "2px solid #fff4",
-                      borderTopColor: "#fff",
+                      border: "2px solid #1a0f1244",
+                      borderTopColor: "#1a0f12",
                       borderRadius: "50%",
                     }}
                   />
@@ -896,16 +945,16 @@ export default function Dashboard() {
                 )}
               </span>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                Backend Status: <strong style={{ color: "var(--text-secondary)" }}>{executionStatus}</strong>
+                Backend Execution Status: <strong style={{ color: "var(--text-pink)" }}>{executionStatus}</strong>
               </span>
             </div>
           </div>
         </main>
 
-        {/* ── Right Sidebar: Security & Audit Console (Section 5) ── */}
+        {/* ── Right Sidebar: Security Console & Real-time Audit (Section B3) ── */}
         <aside
           style={{
-            width: 360,
+            width: 380,
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
@@ -914,7 +963,7 @@ export default function Dashboard() {
             background: "var(--bg-panel)",
           }}
         >
-          {/* Tabs */}
+          {/* Navigation Tabs */}
           <div style={{ display: "flex", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
             {(["security", "audit"] as const).map((tab) => (
               <button
@@ -922,15 +971,15 @@ export default function Dashboard() {
                 onClick={() => setActiveTab(tab)}
                 style={{
                   flex: 1,
-                  padding: "12px 0",
+                  padding: "13px 0",
                   background: "none",
                   border: "none",
-                  borderBottom: activeTab === tab ? "2px solid var(--accent-blue)" : "2px solid transparent",
-                  color: activeTab === tab ? "var(--accent-blue)" : "var(--text-muted)",
-                  fontWeight: activeTab === tab ? 700 : 500,
+                  borderBottom: activeTab === tab ? "2px solid var(--ref-pink)" : "2px solid transparent",
+                  color: activeTab === tab ? "var(--ref-pink)" : "var(--text-muted)",
+                  fontWeight: activeTab === tab ? 800 : 500,
                   fontSize: 12,
                   cursor: "pointer",
-                  letterSpacing: ".5px",
+                  letterSpacing: ".6px",
                   textTransform: "uppercase",
                   transition: "all .15s",
                 }}
@@ -940,67 +989,66 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-            {/* Security Tab */}
+          <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+            {/* Security Console Tab */}
             {activeTab === "security" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* 4 Security Counters */}
+                {/* 4 Security Counters Styled in Deep Slate and Muted Teal */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   {[
-                    { label: "Injection Signals", value: injectionSignals.length, badge: injectionSignals.length > 0 ? "badge-red" : "badge-gray" },
-                    { label: "Denied Actions", value: deniedActions.length, badge: deniedActions.length > 0 ? "badge-red" : "badge-gray" },
-                    { label: "Human Approvals", value: approvalEvents.length, badge: approvalEvents.length > 0 ? "badge-amber" : "badge-gray" },
-                    { label: "Tool Executions", value: toolExecutions.length, badge: "badge-green" },
+                    { label: "Injection Signals", value: injectionSignals.length, badge: injectionSignals.length > 0 ? "badge-red" : "badge-slate" },
+                    { label: "Denied Actions", value: deniedActions.length, badge: deniedActions.length > 0 ? "badge-red" : "badge-slate" },
+                    { label: "Operator Approvals", value: approvalEvents.length, badge: approvalEvents.length > 0 ? "badge-amber" : "badge-slate" },
+                    { label: "Tool Executions", value: toolExecutions.length, badge: "badge-teal" },
                   ].map(({ label, value }) => (
                     <div
                       key={label}
                       className="card"
                       style={{
-                        padding: "12px 14px",
-                        background: "rgba(28, 34, 48, 0.7)",
+                        padding: "14px",
+                        background: "var(--bg-card)",
                         border: "1px solid var(--border)",
                       }}
                     >
-                      <div style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-.5px" }}>{value}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{label}</div>
+                      <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-.5px" }}>{value}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, fontWeight: 600 }}>{label}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Taint & Provenance Status */}
-                <div className="card" style={{ padding: "14px", border: "1px solid var(--border)" }}>
+                {/* Session Taint & Provenance Tracking */}
+                <div className="card" style={{ padding: "16px", border: "1px solid var(--border)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>Data Taint Tracking</span>
-                    <span className={`badge ${tainted ? "badge-amber" : "badge-green"}`}>
-                      {tainted ? "⚠ TAINTED BY EXTERNAL CONTENT" : "✓ PROVENANCE CLEAN"}
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>Data Taint Tracking</span>
+                    <span className={`badge ${tainted ? "badge-amber" : "badge-teal"}`}>
+                      {tainted ? "⚠ SESSION TAINTED" : "✓ PROVENANCE CLEAN"}
                     </span>
                   </div>
-                  <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.6 }}>
                     {tainted
-                      ? "Untrusted external data ingested. The policy engine mandates human operator sign-off for any outbound actions."
-                      : "No external untrusted data has entered the agent context."}
+                      ? "Untrusted external data has been ingested into context. Policy engine mandates human operator sign-off for any outbound actions."
+                      : "No untrusted external data has entered the agent context."}
                   </p>
                 </div>
 
-                {/* Injection Signals Detected */}
+                {/* Real-time Injection Signals */}
                 <div>
-                  <div className="section-header" style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Injection Signals</span>
-                    <span>{injectionSignals.length} Total</span>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".8px", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+                    Injection Signals Detected ({injectionSignals.length})
                   </div>
                   {injectionSignals.length === 0 ? (
                     <div className="card" style={{ padding: "12px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
                       Zero injection signals detected in stream.
                     </div>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {injectionSignals.slice(-6).map((e) => {
                         const d = e.data as Record<string, unknown>;
                         const sev = String(d["severity"] ?? "low");
                         return (
-                          <div key={e.id} className="card animate-fade-in" style={{ padding: "8px 12px", borderLeft: "3px solid #ef4444" }}>
+                          <div key={e.id} className="card animate-fade-in" style={{ padding: "10px 14px", borderLeft: "3px solid var(--accent-red)" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>
                                 {String(d["detectorId"] ?? "INJECTION_DETECTOR")}
                               </span>
                               <span className={`badge ${sev === "high" ? "badge-red" : "badge-amber"}`}>
@@ -1017,15 +1065,17 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Policy Decisions Timeline */}
+                {/* Authorization Decisions Timeline */}
                 <div>
-                  <div className="section-header">Authorization Decisions</div>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".8px", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+                    Authorization Decisions Timeline
+                  </div>
                   {auditEvents.filter((e) => e.type === "authz_decision").length === 0 ? (
                     <div className="card" style={{ padding: "12px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
                       No policy evaluations recorded yet.
                     </div>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {auditEvents
                         .filter((e) => e.type === "authz_decision")
                         .slice(-5)
@@ -1033,9 +1083,9 @@ export default function Dashboard() {
                           const d = e.data as Record<string, unknown>;
                           const kind = String(d["kind"] ?? "");
                           return (
-                            <div key={e.id} className="card animate-fade-in" style={{ padding: "10px 12px" }}>
+                            <div key={e.id} className="card animate-fade-in" style={{ padding: "11px 14px" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
                                   {String(d["tool"] ?? "Tool Proposal")}
                                 </span>
                                 <span className={`badge ${toolBadge(kind)}`}>{kind.toUpperCase().replace("_", " ")}</span>
@@ -1045,7 +1095,7 @@ export default function Dashboard() {
                                   {(d["reasons"] as string[]).join("; ")}
                                 </div>
                               )}
-                              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>{fmtTime(e.ts)}</div>
+                              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>{fmtTime(e.ts)}</div>
                             </div>
                           );
                         })}
@@ -1055,16 +1105,16 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Audit Tab */}
+            {/* Real-time Audit Tab */}
             {activeTab === "audit" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {auditEvents.length === 0 ? (
                   <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", paddingTop: 32 }}>
                     Audit events will stream here live during turns.
                   </div>
                 ) : (
                   [...auditEvents].reverse().map((e) => (
-                    <div key={e.id} className="card animate-fade-in" style={{ padding: "10px 12px" }}>
+                    <div key={e.id} className="card animate-fade-in" style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <span className={`badge ${eventBadge(e.type)}`} style={{ flexShrink: 0 }}>
                           {e.type.replace(/_/g, " ")}
@@ -1072,7 +1122,7 @@ export default function Dashboard() {
                         <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>{fmtTime(e.ts)}</span>
                       </div>
                       {Object.keys(e.data).length > 0 && (
-                        <div className="code-block" style={{ marginTop: 6, fontSize: 10, maxHeight: 120, overflowY: "auto" }}>
+                        <div className="code-block" style={{ marginTop: 8, fontSize: 10, maxHeight: 130, overflowY: "auto" }}>
                           {JSON.stringify(e.data, null, 2)}
                         </div>
                       )}
