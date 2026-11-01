@@ -1,0 +1,164 @@
+{
+  "draft": {
+    "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+    "status": "awaiting_approval",
+    "assistantText": null,
+    "pendingApproval": {
+      "id": "d5d32f6f-9af1-4c9e-b45b-04164f27edd8",
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "proposalId": "eb3a56bb-3645-4e84-b226-68dd27051d13",
+      "decisionId": "eadb0549-8c3f-4e19-9c6d-f8bce5f1143f",
+      "tool": "email.send",
+      "args": {
+        "to": [
+          "alice@example.test"
+        ],
+        "subject": "Possessed Butler Security Report",
+        "body": "Hello Alice, the Butler deterministic security engine is active and verifying all tool proposals."
+      },
+      "argsHash": "9219955ea43592b9f96d2f8277fe1018ebbe179131aa86cf8460298b674fabd7",
+      "reasons": [
+        "Tool always requires human approval."
+      ],
+      "status": "pending",
+      "createdAt": "2026-10-31T23:58:10.985Z",
+      "expiresAt": "2026-11-01T00:08:10.985Z",
+      "resolvedAt": null
+    },
+    "error": null,
+    "executionStatus": "APPROVAL_PENDING"
+  },
+  "approvedTurn": {
+    "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+    "status": "completed",
+    "assistantText": "Failed to send the email due to an internal error.",
+    "pendingApproval": null,
+    "error": null,
+    "executionStatus": "EMAIL_FAILED",
+    "executionDetails": {
+      "tool": "email.send",
+      "summary": "Tool failed."
+    }
+  },
+  "audit": [
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "session_started",
+      "data": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "id": "32e2906a-63b3-4dac-a30d-1dc5be3f2074",
+      "ts": "2026-10-31T23:57:57.289Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "user_message",
+      "data": {
+        "text": "Draft and send an email to alice@example.test with subject 'Possessed Butler Security Report' and body 'Hello Alice, the Butler deterministic security engine is active and verifying all tool proposals.'",
+        "length": 202
+      },
+      "id": "e1347fae-3075-4209-8acc-783e858acf71",
+      "ts": "2026-10-31T23:57:57.291Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "model_output_invalid",
+      "data": {
+        "step": 1,
+        "reason": "schema",
+        "sha256": "00543870ab4272cf9b325db6f30cce3ea3fdf5515efebea3cf6c33d82ac65ead",
+        "length": 212
+      },
+      "id": "f07e1a03-47f2-4705-a714-6ac9f2b176ca",
+      "ts": "2026-10-31T23:58:04.203Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "tool_proposed",
+      "data": {
+        "proposalId": "eb3a56bb-3645-4e84-b226-68dd27051d13",
+        "step": 2,
+        "indexInStep": 0,
+        "tool": "email.send",
+        "args": {
+          "to": [
+            "alice@example.test"
+          ],
+          "subject": "Possessed Butler Security Report",
+          "body": "Hello Alice, the Butler deterministic security engine is active and verifying all tool proposals."
+        }
+      },
+      "id": "1c718cf3-17fa-400a-9495-adb467787ccd",
+      "ts": "2026-10-31T23:58:10.984Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "authz_decision",
+      "data": {
+        "decisionId": "eadb0549-8c3f-4e19-9c6d-f8bce5f1143f",
+        "proposalId": "eb3a56bb-3645-4e84-b226-68dd27051d13",
+        "kind": "require_approval",
+        "tool": "email.send",
+        "argsHash": "9219955ea43592b9f96d2f8277fe1018ebbe179131aa86cf8460298b674fabd7",
+        "ruleIds": [
+          "R-SENSITIVE-ACTION"
+        ],
+        "reasons": [
+          "Tool always requires human approval."
+        ],
+        "signalCount": 0,
+        "policyVersion": "security-engine-v1.0.0"
+      },
+      "id": "98b27373-3ca3-4cef-9ec0-8fd2d19aec9d",
+      "ts": "2026-10-31T23:58:10.985Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "approval_requested",
+      "data": {
+        "approvalId": "d5d32f6f-9af1-4c9e-b45b-04164f27edd8",
+        "decisionId": "eadb0549-8c3f-4e19-9c6d-f8bce5f1143f",
+        "proposalId": "eb3a56bb-3645-4e84-b226-68dd27051d13",
+        "tool": "email.send",
+        "argsHash": "9219955ea43592b9f96d2f8277fe1018ebbe179131aa86cf8460298b674fabd7",
+        "expiresAt": "2026-11-01T00:08:10.985Z"
+      },
+      "id": "927a968f-c4ae-44a7-94b4-5a2380696b3b",
+      "ts": "2026-10-31T23:58:10.985Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "approval_resolved",
+      "data": {
+        "approvalId": "d5d32f6f-9af1-4c9e-b45b-04164f27edd8",
+        "verdict": "approve",
+        "status": "approved"
+      },
+      "id": "42a6595a-decd-448f-b059-04c8deb26b17",
+      "ts": "2026-10-31T23:58:11.079Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "tool_failed",
+      "data": {
+        "tool": "email.send",
+        "proposalId": "eb3a56bb-3645-4e84-b226-68dd27051d13",
+        "code": "INTERNAL",
+        "detail": null
+      },
+      "id": "4d5aa9b8-fe97-4b24-a543-4b7623ae28e2",
+      "ts": "2026-10-31T23:58:14.489Z"
+    },
+    {
+      "sessionId": "333d65ee-5491-4278-b31d-58a4a28b25b8",
+      "type": "turn_completed",
+      "data": {
+        "step": 3,
+        "toolCallCount": 1
+      },
+      "id": "63a13d4b-b58d-4396-9dc9-32a8b66e4f41",
+      "ts": "2026-10-31T23:58:17.795Z"
+    }
+  ]
+}

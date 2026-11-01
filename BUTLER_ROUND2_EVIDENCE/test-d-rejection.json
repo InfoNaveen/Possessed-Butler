@@ -1,0 +1,140 @@
+{
+  "draft": {
+    "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+    "status": "awaiting_approval",
+    "assistantText": null,
+    "pendingApproval": {
+      "id": "a74f8079-7f01-426a-b58e-f0e92b1e34ac",
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "proposalId": "fa294016-cabd-4e89-ab55-7e7b3170073e",
+      "decisionId": "9b6363df-53f1-498d-9489-d862cbb431be",
+      "tool": "email.send",
+      "args": {
+        "to": [
+          "reject-test@example.test"
+        ],
+        "subject": "Testing Butler Rejection",
+        "body": "This draft should be rejected by the operator."
+      },
+      "argsHash": "76e39df64d2a16d0b22e3bcf04b20bf901ea2ea49849f8328f44746241b153ac",
+      "reasons": [
+        "Tool always requires human approval."
+      ],
+      "status": "pending",
+      "createdAt": "2026-10-31T23:57:51.277Z",
+      "expiresAt": "2026-11-01T00:07:51.277Z",
+      "resolvedAt": null
+    },
+    "error": null,
+    "executionStatus": "APPROVAL_PENDING"
+  },
+  "rejectedTurn": {
+    "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+    "status": "completed",
+    "assistantText": "The operator has declined to send the email as requested. Please provide further instructions.",
+    "pendingApproval": null,
+    "error": null,
+    "executionStatus": "APPROVAL_REJECTED",
+    "executionDetails": {
+      "tool": "email.send",
+      "summary": "User rejected execution."
+    }
+  },
+  "audit": [
+    {
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "type": "session_started",
+      "data": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "id": "ea94b7db-3a7d-4f98-bbce-9de711cb43cd",
+      "ts": "2026-10-31T23:57:44.435Z"
+    },
+    {
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "type": "user_message",
+      "data": {
+        "text": "Send an email to reject-test@example.test with subject 'Testing Butler Rejection' and body 'This draft should be rejected by the operator.'",
+        "length": 139
+      },
+      "id": "03c799de-8235-444f-9a8d-6b61cba87091",
+      "ts": "2026-10-31T23:57:44.436Z"
+    },
+    {
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "type": "tool_proposed",
+      "data": {
+        "proposalId": "fa294016-cabd-4e89-ab55-7e7b3170073e",
+        "step": 1,
+        "indexInStep": 0,
+        "tool": "email.send",
+        "args": {
+          "to": [
+            "reject-test@example.test"
+          ],
+          "subject": "Testing Butler Rejection",
+          "body": "This draft should be rejected by the operator."
+        }
+      },
+      "id": "de7c0888-628c-46a0-b35f-229fbfcc9787",
+      "ts": "2026-10-31T23:57:51.275Z"
+    },
+    {
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "type": "authz_decision",
+      "data": {
+        "decisionId": "9b6363df-53f1-498d-9489-d862cbb431be",
+        "proposalId": "fa294016-cabd-4e89-ab55-7e7b3170073e",
+        "kind": "require_approval",
+        "tool": "email.send",
+        "argsHash": "76e39df64d2a16d0b22e3bcf04b20bf901ea2ea49849f8328f44746241b153ac",
+        "ruleIds": [
+          "R-SENSITIVE-ACTION"
+        ],
+        "reasons": [
+          "Tool always requires human approval."
+        ],
+        "signalCount": 0,
+        "policyVersion": "security-engine-v1.0.0"
+      },
+      "id": "7ae95e05-2e9c-45b3-8e20-bfc4a9709abb",
+      "ts": "2026-10-31T23:57:51.276Z"
+    },
+    {
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "type": "approval_requested",
+      "data": {
+        "approvalId": "a74f8079-7f01-426a-b58e-f0e92b1e34ac",
+        "decisionId": "9b6363df-53f1-498d-9489-d862cbb431be",
+        "proposalId": "fa294016-cabd-4e89-ab55-7e7b3170073e",
+        "tool": "email.send",
+        "argsHash": "76e39df64d2a16d0b22e3bcf04b20bf901ea2ea49849f8328f44746241b153ac",
+        "expiresAt": "2026-11-01T00:07:51.277Z"
+      },
+      "id": "298fb631-7f07-4288-ab32-610e123f002e",
+      "ts": "2026-10-31T23:57:51.277Z"
+    },
+    {
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "type": "approval_resolved",
+      "data": {
+        "approvalId": "a74f8079-7f01-426a-b58e-f0e92b1e34ac",
+        "verdict": "reject",
+        "status": "rejected"
+      },
+      "id": "ac01d423-b28a-4671-a747-ca0398942ead",
+      "ts": "2026-10-31T23:57:52.861Z"
+    },
+    {
+      "sessionId": "90e85d3e-e269-4a67-8ca6-6f801fca4066",
+      "type": "turn_completed",
+      "data": {
+        "step": 2,
+        "toolCallCount": 0
+      },
+      "id": "5408992f-1f11-4468-a6fd-1e8e66aa2147",
+      "ts": "2026-10-31T23:57:57.215Z"
+    }
+  ]
+}
