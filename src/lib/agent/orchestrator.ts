@@ -82,7 +82,7 @@ export interface SessionView {
 
 export interface Agent {
   runTurn(input: { sessionId?: string; message: string }): Promise<AgentTurnResult>;
-  resumeAfterApproval(approvalId: string, verdict: "approve" | "reject"): Promise<AgentTurnResult>;
+  resumeAfterApproval(approvalId: string, verdict: "approve" | "reject", callerSessionId?: string): Promise<AgentTurnResult>;
   getSession(sessionId: string): SessionView | undefined;
 }
 
@@ -319,25 +319,34 @@ export function createAgent(deps: AgentDeps): Agent {
       }
 
       const maxProposals = session.security.policy.limits?.maxProposalsPerStep ?? 5;
-      for (let i = 0; i < action.calls.length; i++) {
-        const call = action.calls[i];
-        if (i >= maxProposals) {
-          log(session, "budget_exceeded", {
-            limit: "maxProposalsPerStep",
-            value: maxProposals,
-            tool: call.tool,
+      const allowedCalls = action.calls.slice(0, maxProposals);
+      const excessCalls = action.calls.slice(maxProposals);
+
+      if (excessCalls.length > 0) {
+        log(session, "budget_exceeded", {
+          limit: "maxProposalsPerStep",
+          value: maxProposals,
+          excess: excessCalls.length,
+          step,
+        });
+        excessCalls.forEach((d, j) =>
+          log(session, "tool_proposed", {
             step,
-            indexInStep: i,
-          });
-          const toolName: ToolName | null = (TOOL_NAMES as readonly string[]).includes(call.tool)
-            ? (call.tool as ToolName)
-            : null;
-          session.transcript.push({
-            kind: "notice",
-            text: notices.denied(toolName, ["LIMIT-MAX-PROPOSALS-PER-STEP"]),
-          });
-          continue;
-        }
+            indexInStep: maxProposals + j,
+            tool: d.tool,
+            args: d.args,
+            dropped: true,
+            dropReason: "exceeded_maxProposalsPerStep",
+          }),
+        );
+        session.transcript.push({
+          kind: "notice",
+          text: notices.denied(null, ["LIMIT-MAX-PROPOSALS-PER-STEP"]),
+        });
+      }
+
+      for (let i = 0; i < allowedCalls.length; i++) {
+        const call = allowedCalls[i];
 
         const proposal: ToolCallProposal = {
           id: randomUUID(),
@@ -401,7 +410,7 @@ export function createAgent(deps: AgentDeps): Agent {
             expiresAt: approval.expiresAt,
           });
 
-          const dropped = action.calls.slice(i + 1);
+          const dropped = allowedCalls.slice(i + 1);
           dropped.forEach((d, j) =>
             log(session, "tool_proposed", { step, indexInStep: i + 1 + j, tool: d.tool, args: d.args, dropped: true }),
           );
@@ -462,10 +471,13 @@ export function createAgent(deps: AgentDeps): Agent {
       });
     },
 
-    async resumeAfterApproval(approvalId, verdict) {
+    async resumeAfterApproval(approvalId, verdict, callerSessionId?: string) {
       const approval = deps.approvals.get(approvalId);
       const session = approval ? sessions.get(approval.sessionId) : undefined;
       if (!approval || !session) return errorResult("", "APPROVAL_NOT_FOUND", "Unknown approval.");
+      if (callerSessionId !== undefined && callerSessionId !== approval.sessionId) {
+        return errorResult(session.id, "APPROVAL_SESSION_MISMATCH", "Approval does not belong to the calling session.");
+      }
       if (approval.sessionId !== session.id) {
         return errorResult(session.id, "CROSS_SESSION_APPROVAL", "Approval does not belong to active session.");
       }
